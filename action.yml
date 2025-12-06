@@ -20,6 +20,12 @@ inputs:
       'fail'.
     required: false
     default: "update"
+  annotation:
+    description: >-
+      Optional annotation message for tags. If provided, creates annotated tags.
+      If empty, creates lightweight tags.
+    required: false
+    default: ""
   github_token:
     description: "The GitHub token to use for authentication."
     required: false
@@ -32,7 +38,9 @@ outputs:
     description: "List of tags that were created."
   updated:
     description: "List of tags that were updated."
+  skipped:
+    description: "List of tags that were skipped."
 
 runs:
-  using: "node16"
-  main: "dist/index.js"
+  using: node24
+  main: dist/index.js

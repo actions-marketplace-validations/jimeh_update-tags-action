@@ -1,27 +1,15 @@
-<h1 align="center">
-  update-tags-action
-</h1>
+<div align="center">
 
-<p align="center">
-  <strong>
-    Easily create/update one or more Git tags in a GitHub repository.
-  </strong>
-</p>
+# update-tags-action
 
-<p align="center">
-  <a href="https://github.com/jimeh/update-tags-action/releases">
-    <img src="https://img.shields.io/github/v/tag/jimeh/update-tags-action?label=release" alt="GitHub tag (latest SemVer)">
-  </a>
-  <a href="https://github.com/jimeh/update-tags-action/issues">
-    <img src="https://img.shields.io/github/issues-raw/jimeh/update-tags-action.svg?style=flat&logo=github&logoColor=white" alt="GitHub issues">
-  </a>
-  <a href="https://github.com/jimeh/update-tags-action/pulls">
-    <img src="https://img.shields.io/github/issues-pr-raw/jimeh/update-tags-action.svg?style=flat&logo=github&logoColor=white" alt="GitHub pull requests">
-  </a>
-  <a href="https://github.com/jimeh/update-tags-action/blob/master/LICENSE">
-    <img src="https://img.shields.io/github/license/jimeh/update-tags-action.svg?style=flat" alt="License Status">
-  </a>
-</p>
+**Easily create/update one or more Git tags in a GitHub repository.**
+
+[![Latest Release](https://img.shields.io/github/release/jimeh/update-tags-action.svg)](https://github.com/jimeh/update-tags-action/releases)
+[![GitHub Issues](https://img.shields.io/github/issues/jimeh/update-tags-action.svg?logo=github&logoColor=white)](https://github.com/jimeh/update-tags-action/issues)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/jimeh/update-tags-action.svg?logo=github&logoColor=white)](https://github.com/jimeh/update-tags-action/pulls)
+[![License](https://img.shields.io/github/license/jimeh/update-tags-action.svg)](https://github.com/jimeh/update-tags-action/blob/main/LICENSE)
+
+</div>
 
 Generally useful for moving major (`v1`) and minor (`v1.2`) tags to same commit
 as the latest `v1.x.x` tag.
@@ -34,19 +22,23 @@ to move its own major and minor tags.
 
 ### Basic
 
+<!-- x-release-please-start-minor -->
+
 ```yaml
-- uses: jimeh/update-tags-action@v1
+- uses: jimeh/update-tags-action@v2
   with:
-    tags: v1,v1.2
+    tags: v2,v2.2
 ```
 
 ```yaml
-- uses: jimeh/update-tags-action@v1
+- uses: jimeh/update-tags-action@v2
   with:
     tags: |
-      v1
-      v1.2
+      v2
+      v2.2
 ```
+
+<!-- x-release-please-end -->
 
 ### With Release Please
 
@@ -56,45 +48,91 @@ but you can just as easily use the official
 [google-github-actions/release-please-action](https://github.com/google-github-actions/release-please-action)
 instead.
 
-```yaml
-name: Push
-on: push
+First you'll want the workflow setup to run on push:
 
-jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    steps:
-      - uses: jimeh/release-please-manifest-action@v1
-        id: release-please
-      - uses: jimeh/update-tags-action@v1
-        with:
-          tags: |
-            v${{ steps.release-please.outputs.major }}
-            v${{ steps.release-please.outputs.major }}.${{ steps.release-please.outputs.minor }}
+```yaml
+on: [push]
 ```
 
-<!-- action-docs-inputs -->
+Then you'll want a release-please job which only runs on pushes to your `main`
+branch, and exposes relevant outputs from release please:
+
+```yaml
+jobs:
+  # [...]
+  release-please:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' }}
+    outputs:
+      release_created: ${{ steps.release-please.outputs.release_created }}
+      major: ${{ steps.release-please.outputs.major }}
+      minor: ${{ steps.release-please.outputs.minor }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: jimeh/release-please-manifest-action@v3
+        id: release-please
+```
+
+And finally a job to create MAJOR and MINOR release tags, which only runs when
+release-please reports having created a release:
+
+<!-- x-release-please-start-major -->
+
+```yaml
+jobs:
+  # [...]
+  release-tags:
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    permissions:
+      contents: write
+    steps:
+      - uses: jimeh/update-tags-action@v2
+        with:
+          tags: |
+            v${{ needs.release-please.outputs.major }}
+            v${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}
+```
+
+<!-- x-release-please-end -->
+
+<!-- action-docs-inputs source="action.yml" -->
 
 ## Inputs
 
-| parameter    | description                                                                       | required | default             |
-| ------------ | --------------------------------------------------------------------------------- | -------- | ------------------- |
-| tags         | List/CSV of tags to create/update.                                                | `true`   |                     |
-| ref          | The SHA or ref to tag. Defaults to SHA of current commit.                         | `false`  | ${{ github.sha }}   |
-| when_exists  | What to do if the tag already exists. Must be one of 'update', 'skip', or 'fail'. | `false`  | update              |
-| github_token | The GitHub token to use for authentication.                                       | `false`  | ${{ github.token }} |
+| name           | description                                                                                                           | required | default               |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- | -------- | --------------------- |
+| `tags`         | <p>List/CSV of tags to create/update.</p>                                                                             | `true`   | `""`                  |
+| `ref`          | <p>The SHA or ref to tag. Defaults to SHA of current commit.</p>                                                      | `false`  | `${{ github.sha }}`   |
+| `when_exists`  | <p>What to do if the tag already exists. Must be one of 'update', 'skip', or 'fail'.</p>                              | `false`  | `update`              |
+| `annotation`   | <p>Optional annotation message for tags. If provided, creates annotated tags. If empty, creates lightweight tags.</p> | `false`  | `""`                  |
+| `github_token` | <p>The GitHub token to use for authentication.</p>                                                                    | `false`  | `${{ github.token }}` |
 
-<!-- action-docs-inputs -->
-
-<!-- action-docs-outputs -->
+<!-- action-docs-inputs source="action.yml" -->
+<!-- action-docs-outputs source="action.yml" -->
 
 ## Outputs
 
-| parameter | description                             |
-| --------- | --------------------------------------- |
-| tags      | List of tags that were created/updated. |
-| created   | List of tags that were created.         |
-| updated   | List of tags that were updated.         |
+| name      | description                                    |
+| --------- | ---------------------------------------------- |
+| `tags`    | <p>List of tags that were created/updated.</p> |
+| `created` | <p>List of tags that were created.</p>         |
+| `updated` | <p>List of tags that were updated.</p>         |
+| `skipped` | <p>List of tags that were skipped.</p>         |
 
-<!-- action-docs-outputs -->
+<!-- action-docs-outputs source="action.yml" -->
+<!-- action-docs-runs source="action.yml" -->
+
+## Runs
+
+This action is a `node24` action.
+
+<!-- action-docs-runs source="action.yml" -->
+
+## License
+
+[MIT](https://github.com/jimeh/update-tags-action/blob/main/LICENSE)

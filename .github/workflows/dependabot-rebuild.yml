@@ -1,0 +1,42 @@
+---
+name: Dependabot Rebuild
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  rebuild-dist:
+    runs-on: ubuntu-latest
+    if: |-
+      ${{ github.actor == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]' }}
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Rebuild dist
+        run: npm run bundle
+      - name: Commit and push if changed
+        uses: ryancyq/github-signed-commit@e9f3b28c80da7be66d24b8f501a5abe82a6b855f # v1.2.0
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          files: |
+            dist/
+          commit-message: |-
+            chore: rebuild dist
