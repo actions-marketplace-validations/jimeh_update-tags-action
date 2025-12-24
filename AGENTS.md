@@ -19,6 +19,10 @@ tags.
 up-to-date. Always run `npm run package` (or `npm run bundle`) after modifying
 `src/` files.
 
+**License Compliance**: After modifying NPM dependencies, check license status
+and re-cache if needed via `npm run licensed:status` and
+`npm run licensed:cache`.
+
 ## Development Commands
 
 Package manager: npm
@@ -35,7 +39,7 @@ npm run package       # Build src/index.ts -> dist/index.js via Rollup
 npm run bundle        # Alias: format + package
 
 # Run a single test file
-NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 npx jest tests/main.test.ts
+NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 jest tests/main.test.ts
 
 # CI variants (suppress warnings)
 npm run ci-test       # Run tests in CI mode
@@ -48,6 +52,10 @@ npm run update-readme
 
 # Watch mode
 npm run package:watch # Auto-rebuild on changes
+
+# License compliance (after modifying dependencies)
+npm run licensed:status  # Check license status of dependencies
+npm run licensed:cache   # Re-cache licenses if needed
 ```
 
 ## Code Architecture
@@ -59,6 +67,11 @@ npm run package:watch # Auto-rebuild on changes
   function that coordinates input parsing, tag processing, and output setting
 - **[src/inputs.ts](src/inputs.ts)**: Input parsing and validation. Exports
   `getInputs()` that reads action inputs and `Inputs` interface
+- **[src/derive.ts](src/derive.ts)**: Semver parsing and tag derivation:
+  - `parseSemver()`: Parses version strings into components (prefix, major,
+    minor, patch, prerelease, build)
+  - `renderTemplate()`: Renders Handlebars templates with semver context
+  - `deriveTags()`: Derives tags from a version string using a template
 - **[src/tags.ts](src/tags.ts)**: Tag planning and execution logic:
   - `planTagOperations()`: Parses tags, pre-resolves refs to SHAs in parallel,
     plans create/update/skip operations
@@ -72,13 +85,36 @@ npm run package:watch # Auto-rebuild on changes
 ### Tag Input Parsing
 
 Uses `csv-parse/sync` to handle both CSV and newline-delimited formats. Supports
-per-tag ref overrides: `v1:main` tags `v1` to `main` branch.
+per-tag ref and annotation overrides using the format `tag:ref:annotation`:
+
+- `tag` — Use default `ref` and `annotation` inputs
+- `tag:ref` — Override ref for this tag (e.g., `v1:main` tags `v1` to `main`)
+- `tag:ref:annotation` — Override both ref and annotation
+- `tag::annotation` — Override annotation only (empty ref uses default)
+
+Annotations can contain colons; everything after the second colon is treated as
+the annotation text. Per-tag values override the global `ref` and `annotation`
+inputs.
+
+### Tag Derivation
+
+The `derive_from` input allows automatic generation of tags from a semver
+version string. Uses Handlebars templates with these placeholders:
+
+- `{{prefix}}`: "v" or "V" if input had prefix, empty otherwise
+- `{{major}}`, `{{minor}}`, `{{patch}}`: Version numbers
+- `{{prerelease}}`, `{{build}}`: Optional semver components
+- `{{version}}`: Full version without prefix
+
+Default template `{{prefix}}{{major}},{{prefix}}{{major}}.{{minor}}` generates
+major and minor tags (e.g., `v1.2.3` → `v1`, `v1.2`). Supports Handlebars
+conditionals like `{{#if prerelease}}...{{/if}}`.
 
 ### Tag Update Logic
 
 1. Parse and validate inputs ([inputs.ts](src/inputs.ts))
 2. Plan all tag operations ([tags.ts](src/tags.ts):planTagOperations):
-   - Parse `tag:ref` syntax and extract per-tag refs
+   - Parse `tag:ref:annotation` syntax and extract per-tag refs/annotations
    - Pre-resolve all unique refs to SHAs in parallel (optimization)
    - For each tag, check existence and determine operation:
      - If exists + fail mode: Fail action immediately
@@ -188,11 +224,18 @@ chore(deps): bump @actions/core to v1.10.0
 
 **Inputs:**
 
-- `tags`: CSV/newline list, supports `tag:ref` syntax
-- `ref`: SHA/ref to tag (default: current commit)
+- `tags`: CSV/newline list, supports `tag:ref:annotation` syntax for per-tag
+  overrides
+- `derive_from`: Semver version string to derive tags from (e.g., "v1.2.3")
+- `derive_from_template`: Handlebars template for tag derivation (default:
+  `{{prefix}}{{major}},{{prefix}}{{major}}.{{minor}}`)
+- `ref`: Default SHA/ref to tag (default: current commit)
 - `when_exists`: update|skip|fail (default: update)
-- `annotation`: Optional message for annotated tags (default: lightweight)
+- `annotation`: Default annotation message for tags (default: lightweight/none)
+- `dry_run`: Log planned operations without executing (default: false)
 - `github_token`: Auth token (default: github.token)
+
+Either `tags` or `derive_from` (or both) must be provided.
 
 **Outputs:**
 
